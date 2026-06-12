@@ -168,6 +168,16 @@
   <script src="js/ui.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
+      // Auto-recarga cuando un SW NUEVO toma el control (trae la versión
+      // actualizada de los archivos). Solo si ya había un SW antes, para no
+      // recargar en la primera instalación.
+      var __hadController = !!navigator.serviceWorker.controller;
+      var __refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (__refreshing || !__hadController) return;
+        __refreshing = true;
+        window.location.reload();
+      });
       window.addEventListener('load', function () {
         navigator.serviceWorker.register('sw.js').catch(function () {});
       });
