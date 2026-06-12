@@ -1,0 +1,21 @@
+{
+  "name": "Control de Pasajes",
+  "short_name": "Pasajes",
+  "description": "Suma tus ingresos diarios de pasajes leyendo tus capturas de Yape y Plin, todo desde el celular y sin conexión.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f5fa",
+  "theme_color": "#6d28d9",
+  "lang": "es-PE",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

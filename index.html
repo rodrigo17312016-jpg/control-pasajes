@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover" />
+  <meta name="theme-color" content="#6d28d9" />
+  <title>Control de Pasajes</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div id="app">
+
+    <!-- ===== Cabecera ===== -->
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <span class="brand-logo">🎫</span>
+          <div class="brand-text">
+            <h1>Control de Pasajes</h1>
+            <p>Ingresos por día · sin contar duplicados</p>
+          </div>
+        </div>
+        <button id="btnInfo" class="icon-btn" title="Cómo funciona" aria-label="Información">ⓘ</button>
+      </div>
+    </header>
+
+    <main class="container">
+
+      <!-- ===== Subir capturas ===== -->
+      <section class="card upload-card">
+        <h2 class="section-title">📥 Subir capturas</h2>
+        <p class="hint">Sube 1, 2 o 3 fotos de tus movimientos. La app lee cada uno, suma los <b>negros (ingresos)</b> e ignora los <b>rojos (gastos)</b>. Si una fila se repite entre fotos, <b>no la cuenta dos veces</b>.</p>
+
+        <div class="ref-date-row">
+          <label for="refDate">📅 Las capturas que dicen <b>“Hoy”</b> son del día:</label>
+          <input type="date" id="refDate" />
+        </div>
+
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Seleccionar imágenes">
+          <input type="file" id="fileInput" accept="image/*" multiple hidden />
+          <div class="dropzone-inner">
+            <span class="dz-icon">🖼️</span>
+            <span class="dz-text">Toca para elegir fotos<br /><small>o arrástralas aquí</small></span>
+          </div>
+        </div>
+
+        <div id="fileChips" class="file-chips" hidden></div>
+
+        <button id="btnAnalyze" class="btn btn-primary btn-block" disabled>Analizar imágenes</button>
+
+        <div id="ocrProgress" class="ocr-progress" hidden>
+          <div class="ocr-progress-bar"><span id="ocrProgressBar"></span></div>
+          <div id="ocrProgressText" class="ocr-progress-text">Preparando…</div>
+        </div>
+      </section>
+
+      <!-- ===== Dashboard ===== -->
+      <section id="dashboard">
+
+        <div class="kpi-grid">
+          <div class="card kpi kpi-accent">
+            <span class="kpi-label">Ingreso total</span>
+            <span class="kpi-value" id="kpiIncome">S/ 0.00</span>
+          </div>
+          <div class="card kpi">
+            <span class="kpi-label">Mejor día</span>
+            <span class="kpi-value" id="kpiBestDay">—</span>
+            <span class="kpi-sub" id="kpiBestDayVal"></span>
+          </div>
+          <div class="card kpi">
+            <span class="kpi-label">Días registrados</span>
+            <span class="kpi-value" id="kpiDays">0</span>
+          </div>
+          <div class="card kpi">
+            <span class="kpi-label">N° de cobros</span>
+            <span class="kpi-value" id="kpiCount">0</span>
+            <span class="kpi-sub" id="kpiExpense"></span>
+          </div>
+        </div>
+
+        <div class="card chart-card">
+          <div class="chart-head">
+            <h2 class="section-title">📈 Ingresos por día</h2>
+            <div class="chart-toggle">
+              <button class="seg active" data-metric="income">Ingresos</button>
+              <button class="seg" data-metric="net">Neto</button>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="incomeChart"></canvas></div>
+        </div>
+
+        <div class="card list-card">
+          <div class="list-head">
+            <h2 class="section-title">🗓️ Detalle por día</h2>
+            <div class="list-tools">
+              <input type="search" id="searchInput" placeholder="🔎 Buscar nombre…" />
+              <button id="btnExportCsv" class="btn btn-ghost btn-sm">⬇ CSV</button>
+              <button id="btnCopySummary" class="btn btn-ghost btn-sm">📋 Resumen</button>
+            </div>
+          </div>
+          <div id="daysList" class="days-list"></div>
+          <div id="emptyState" class="empty-state" hidden>
+            <span class="empty-emoji">🧾</span>
+            <p>Todavía no hay movimientos.<br />Sube tus capturas o carga el ejemplo.</p>
+            <button id="btnLoadSample" class="btn btn-primary">📋 Cargar mis 4 capturas de ejemplo</button>
+          </div>
+        </div>
+
+        <div class="footer-actions">
+          <button id="btnClearAll" class="btn btn-danger-ghost btn-sm">🗑 Borrar todo</button>
+          <span class="store-note">🔒 Tus datos se guardan solo en este dispositivo.</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ===== Modal de revisión (tras OCR) ===== -->
+  <div id="reviewModal" class="modal" hidden>
+    <div class="modal-content">
+      <div class="modal-head">
+        <h2>Revisa antes de guardar</h2>
+        <button id="btnCancelReview" class="icon-btn" aria-label="Cerrar">✕</button>
+      </div>
+      <p id="reviewSummary" class="review-summary"></p>
+      <p class="hint">Corrige lo que haga falta. Las filas marcadas como <span class="badge-dup">duplicado</span> ya existen y vienen <b>desmarcadas</b> para no sumarlas otra vez.</p>
+      <div class="review-table-wrap">
+        <table class="review-table">
+          <thead>
+            <tr><th></th><th>Nombre</th><th>Fecha</th><th>Hora</th><th>Monto</th><th>Tipo</th></tr>
+          </thead>
+          <tbody id="reviewTableBody"></tbody>
+        </table>
+      </div>
+      <div class="modal-foot">
+        <button id="btnCancelReview2" class="btn btn-ghost">Cancelar</button>
+        <button id="btnSaveReview" class="btn btn-primary">Guardar seleccionados</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Modal info ===== -->
+  <div id="infoModal" class="modal" hidden>
+    <div class="modal-content modal-sm">
+      <div class="modal-head">
+        <h2>¿Cómo funciona?</h2>
+        <button id="btnCloseInfo" class="icon-btn" aria-label="Cerrar">✕</button>
+      </div>
+      <ol class="info-list">
+        <li>📅 Elige el día al que corresponde el <b>“Hoy”</b> de tus capturas.</li>
+        <li>🖼️ Sube las fotos de la pantalla <b>Movimientos</b>.</li>
+        <li>🤖 La app lee cada movimiento automáticamente.</li>
+        <li>✅ Revisas y corriges si algo se leyó mal.</li>
+        <li>➕ Suma solo los <b>ingresos (negros)</b>. Los <b>gastos (rojos)</b> no se cuentan.</li>
+        <li>🔁 Si una fila aparece en dos fotos, se cuenta <b>una sola vez</b>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="js/store.js"></script>
+  <script src="js/ocr.js"></script>
+  <script src="js/ui.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
+    }
+    window.addEventListener('DOMContentLoaded', function () {
+      if (window.UI && typeof UI.init === 'function') UI.init();
+    });
+  </script>
+</body>
+</html>
