@@ -15,7 +15,10 @@
     expanded: {},       // qué días están abiertos
     search: '',
     metric: 'income',
-    chart: null
+    chart: null,
+    autoT: null,        // timer de auto-análisis al pegar
+    pasteCount: 0,      // contador para nombrar imágenes pegadas
+    busy: false         // hay un análisis en curso
   };
 
   /* ----------------------- helpers ----------------------- */
@@ -63,14 +66,88 @@
   }
 
   /* ----------------------- selección de archivos ----------------------- */
-  function setFiles(fileList) {
-    var arr = [];
+  function fileSig(f) { return (f.name || 'img') + '|' + (f.size || 0) + '|' + (f.lastModified || 0); }
+
+  // Agrega imágenes a la cola (sin reemplazar). Devuelve cuántas se agregaron.
+  // opts.auto => dispara el análisis automático (usado al pegar).
+  function addFiles(fileList, opts) {
+    opts = opts || {};
+    var have = {};
+    state.files.forEach(function (f) { have[fileSig(f)] = true; });
+    var added = 0;
     for (var i = 0; i < fileList.length; i++) {
-      if (/^image\//.test(fileList[i].type)) arr.push(fileList[i]);
+      var f = fileList[i];
+      if (!f || !/^image\//.test(f.type || '')) continue;
+      var sig = fileSig(f);
+      if (have[sig]) continue;
+      have[sig] = true;
+      state.files.push(f);
+      added++;
     }
-    state.files = arr;
     renderChips();
-    $('btnAnalyze').disabled = arr.length === 0;
+    $('btnAnalyze').disabled = state.files.length === 0;
+    if (added && opts.auto) scheduleAutoAnalyze();
+    return added;
+  }
+
+  // Convierte un blob del portapapeles en un File con nombre único.
+  function asPastedFile(blob) {
+    var name = 'pegado-' + (++state.pasteCount) + '.png';
+    try { return new File([blob], name, { type: blob.type || 'image/png' }); }
+    catch (e) { try { blob.name = name; } catch (e2) {} return blob; }
+  }
+
+  function scheduleAutoAnalyze() {
+    clearTimeout(state.autoT);
+    state.autoT = setTimeout(function run() {
+      if (state.busy) { state.autoT = setTimeout(run, 500); return; }
+      if (state.files.length) analyze();
+    }, 600);
+  }
+
+  // Ctrl + V en cualquier parte: si el portapapeles trae imagen(es), pégalas y analiza.
+  function onPaste(e) {
+    var dt = e.clipboardData; if (!dt) return;
+    var imgs = [], i;
+    if (dt.items) {
+      for (i = 0; i < dt.items.length; i++) {
+        var it = dt.items[i];
+        if (it.kind === 'file' && /^image\//.test(it.type)) {
+          var f = it.getAsFile(); if (f) imgs.push(asPastedFile(f));
+        }
+      }
+    }
+    if (!imgs.length && dt.files) {
+      for (i = 0; i < dt.files.length; i++) {
+        if (/^image\//.test(dt.files[i].type)) imgs.push(asPastedFile(dt.files[i]));
+      }
+    }
+    if (!imgs.length) return; // texto u otra cosa: deja que el navegador pegue normal
+    e.preventDefault();
+    var n = addFiles(imgs, { auto: true });
+    if (n) toast('📋 ' + n + ' imagen' + (n > 1 ? 'es' : '') + ' pegada' + (n > 1 ? 's' : '') + ' — analizando…');
+  }
+
+  // Botón "Pegar imagen": lee el portapapeles con la Clipboard API (requiere HTTPS).
+  function pasteFromClipboard() {
+    if (!navigator.clipboard || !navigator.clipboard.read) {
+      toast('Tu navegador no permite pegar con botón. Usa Ctrl + V.', true); return;
+    }
+    navigator.clipboard.read().then(function (items) {
+      var pending = [], imgs = [];
+      items.forEach(function (it) {
+        var type = (it.types || []).filter(function (t) { return /^image\//.test(t); })[0];
+        if (type) pending.push(it.getType(type).then(function (blob) { imgs.push(asPastedFile(blob)); }));
+      });
+      Promise.all(pending).then(function () {
+        if (!imgs.length) { toast('No hay ninguna imagen copiada.', true); return; }
+        var n = addFiles(imgs, { auto: true });
+        if (n) toast('📋 Imagen pegada — analizando…');
+      });
+    }).catch(function (err) {
+      console.warn('clipboard.read', err);
+      toast('No pude leer el portapapeles. Prueba con Ctrl + V.', true);
+    });
   }
   function renderChips() {
     var box = $('fileChips');
@@ -88,11 +165,13 @@
 
   /* ----------------------- análisis OCR ----------------------- */
   function analyze() {
+    if (state.busy) return;
     if (!window.OCR || typeof OCR.extract !== 'function') {
       toast('El motor de lectura no cargó. Recarga la página.', true);
       return;
     }
     if (!state.files.length) return;
+    state.busy = true;
     var refDate = $('refDate').value || todayISO();
     var prog = $('ocrProgress'); prog.hidden = false;
     $('btnAnalyze').disabled = true;
@@ -129,6 +208,7 @@
     }
 
     function done() {
+      state.busy = false;
       setProg(1, 'Listo');
       setTimeout(function () { prog.hidden = true; bar.style.width = '0%'; }, 400);
       $('btnAnalyze').disabled = false;
@@ -347,14 +427,18 @@
     var dz = $('dropzone'), fi = $('fileInput');
     dz.onclick = function () { fi.click(); };
     dz.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fi.click(); } };
-    fi.onchange = function () { setFiles(fi.files); };
+    fi.onchange = function () { addFiles(fi.files); fi.value = ''; };
     ['dragenter', 'dragover'].forEach(function (ev) {
       dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('dragover'); });
     });
     ['dragleave', 'drop'].forEach(function (ev) {
       dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove('dragover'); });
     });
-    dz.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) setFiles(e.dataTransfer.files); });
+    dz.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+
+    // pegar imagen: botón (Clipboard API) + Ctrl+V global
+    $('btnPaste').onclick = pasteFromClipboard;
+    document.addEventListener('paste', onPaste);
 
     $('btnAnalyze').onclick = analyze;
 
