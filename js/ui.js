@@ -270,6 +270,7 @@
     });
     if (!picked.length) { toast('No marcaste ninguna fila.', true); return; }
     var res = Store.addMany(picked);
+    pushToCloud(res.added);              // sube los nuevos al registro central
     hideModal('reviewModal');
     state.files = []; renderChips(); $('btnAnalyze').disabled = true; $('fileInput').value = '';
     toast('✅ ' + res.addedCount + ' guardados' + (res.dupCount ? ' · ' + res.dupCount + ' duplicados omitidos' : ''));
@@ -371,6 +372,7 @@
         row.querySelector('.txn-del').onclick = function (ev) {
           ev.stopPropagation();
           Store.remove(t.id);
+          if (window.Cloud && Cloud.enabled) { Cloud.remove(t.id).then(setCloudStatus); }
           toast('Movimiento eliminado');
           render();
         };
@@ -419,6 +421,69 @@
     } else { toast('Copiado'); }
   }
 
+  /* ----------------------- sincronización con la nube ----------------------- */
+  var PENDING_KEY = 'pasajes_cloud_pending';
+
+  function pendingGet() {
+    try { var a = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function pendingSet(arr) { try { localStorage.setItem(PENDING_KEY, JSON.stringify(arr.slice(0, 1000))); } catch (e) {} }
+  function pendingAdd(ids) { var s = pendingGet(); ids.forEach(function (id) { if (s.indexOf(id) < 0) s.push(id); }); pendingSet(s); }
+  function pendingRemove(ids) { var rm = {}; ids.forEach(function (id) { rm[id] = 1; }); pendingSet(pendingGet().filter(function (id) { return !rm[id]; })); }
+
+  function setCloudStatus() {
+    var el = $('cloudStatus'); if (!el) return;
+    if (!window.Cloud || !Cloud.enabled) { el.textContent = '🔒 Solo este dispositivo'; el.className = 'cloud-status'; return; }
+    var pend = pendingGet().length;
+    if (Cloud.online === false) { el.textContent = '⚠️ Sin conexión' + (pend ? ' · ' + pend + ' por subir' : ''); el.className = 'cloud-status off'; }
+    else if (pend) { el.textContent = '☁️ Subiendo ' + pend + '…'; el.className = 'cloud-status'; }
+    else if (Cloud.online === true) { el.textContent = '☁️ Registro sincronizado'; el.className = 'cloud-status ok'; }
+    else { el.textContent = '☁️ Conectando…'; el.className = 'cloud-status'; }
+  }
+
+  // Reintenta subir los pendientes (los que no se confirmaron en la nube).
+  function flushPending() {
+    if (!window.Cloud || !Cloud.enabled) return Promise.resolve();
+    var ids = pendingGet(); if (!ids.length) return Promise.resolve();
+    var byId = {}; Store.all().forEach(function (t) { byId[t.id] = t; });
+    var txns = ids.map(function (id) { return byId[id]; }).filter(Boolean);
+    if (!txns.length) { pendingSet([]); return Promise.resolve(); }
+    return Cloud.push(txns).then(function (r) {
+      if (r.ok) pendingRemove(txns.map(function (t) { return t.id; }));
+      setCloudStatus();
+    });
+  }
+
+  // Al abrir (o al tocar el chip): baja el registro central, lo fusiona y
+  // reintenta lo pendiente.
+  function syncFromCloud() {
+    if (!window.Cloud || !Cloud.enabled) { setCloudStatus(); return; }
+    setCloudStatus();
+    Cloud.pull().then(function (rows) {
+      if (rows && rows.length) {
+        var res = Store.addMany(rows);
+        if (res.addedCount) {
+          var d0 = Store.byDay()[0]; if (d0) state.expanded[d0.date] = true;
+          render();
+        }
+      }
+      setCloudStatus();
+      return flushPending();
+    }).then(function () { setCloudStatus(); });
+  }
+
+  // Sube movimientos nuevos; si falla, quedan pendientes para el próximo intento.
+  function pushToCloud(txns) {
+    if (!window.Cloud || !Cloud.enabled || !txns || !txns.length) return;
+    var ids = txns.map(function (t) { return t.id; });
+    pendingAdd(ids); setCloudStatus();
+    Cloud.push(txns).then(function (r) {
+      if (r.ok) pendingRemove(ids);
+      setCloudStatus();
+    });
+  }
+
   /* ----------------------- init ----------------------- */
   function init() {
     $('refDate').value = todayISO();
@@ -457,10 +522,20 @@
     $('btnCopySummary').onclick = copySummary;
     $('btnLoadSample').onclick = function () { Store.seedSample(); toast('Ejemplo cargado'); render(); };
     $('btnClearAll').onclick = function () {
-      if (Store.hasData() && confirm('¿Borrar TODOS los movimientos? Esto no se puede deshacer.')) {
-        Store.clearAll(); toast('Todo borrado'); render();
+      var msg = (window.Cloud && Cloud.enabled)
+        ? '¿Borrar TODOS los movimientos, también del registro en la nube? Esto no se puede deshacer.'
+        : '¿Borrar TODOS los movimientos? Esto no se puede deshacer.';
+      if (Store.hasData() && confirm(msg)) {
+        Store.clearAll();
+        pendingSet([]);
+        if (window.Cloud && Cloud.enabled) { Cloud.clearAll().then(setCloudStatus); }
+        toast('Todo borrado'); render();
       }
     };
+
+    // chip de estado: tocar = volver a sincronizar
+    var cs = $('cloudStatus');
+    if (cs) cs.onclick = function () { syncFromCloud(); };
 
     // toggle métrica del gráfico
     document.querySelectorAll('.chart-toggle .seg').forEach(function (b) {
@@ -484,6 +559,7 @@
     if (d0) state.expanded[d0.date] = true;
 
     render();
+    syncFromCloud();   // baja el registro central y fusiona
   }
 
   window.UI = { init: init, render: render };

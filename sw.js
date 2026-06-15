@@ -13,7 +13,7 @@
 
 'use strict';
 
-const CACHE = 'control-pasajes-v3';
+const CACHE = 'control-pasajes-v4';
 
 // Recursos mínimos que forman el "esqueleto" de la app (mismo origen).
 const APP_SHELL = [
@@ -21,6 +21,7 @@ const APP_SHELL = [
   './index.html',
   './css/styles.css',
   './js/store.js',
+  './js/cloud.js',
   './js/ocr.js',
   './js/ui.js',
   './icon.svg',

@@ -113,7 +113,7 @@
 
         <div class="footer-actions">
           <button id="btnClearAll" class="btn btn-danger-ghost btn-sm">🗑 Borrar todo</button>
-          <span class="store-note">🔒 Tus datos se guardan solo en este dispositivo.</span>
+          <button id="cloudStatus" class="cloud-status" title="Estado de sincronización">☁️ Conectando…</button>
         </div>
       </section>
     </main>
@@ -164,6 +164,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="js/store.js"></script>
+  <script src="js/cloud.js"></script>
   <script src="js/ocr.js"></script>
   <script src="js/ui.js"></script>
   <script>
