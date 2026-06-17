@@ -65,32 +65,42 @@
       <section id="dashboard">
 
         <div class="kpi-grid">
-          <div class="card kpi kpi-accent">
-            <span class="kpi-label">Ingreso total</span>
+          <div class="card kpi kpi-primary">
+            <div class="kpi-top"><span class="kpi-label">Ingresos</span><span class="kpi-tag tag-up">▲ ingresos</span></div>
             <span class="kpi-value" id="kpiIncome">S/ 0.00</span>
+            <span class="kpi-sub" id="kpiIncomeSub">—</span>
           </div>
           <div class="card kpi">
-            <span class="kpi-label">Mejor día</span>
-            <span class="kpi-value" id="kpiBestDay">—</span>
-            <span class="kpi-sub" id="kpiBestDayVal"></span>
+            <div class="kpi-top"><span class="kpi-label">Gastos</span><span class="kpi-tag tag-down">▼ gastos</span></div>
+            <span class="kpi-value val-expense" id="kpiExpense">S/ 0.00</span>
+            <span class="kpi-sub" id="kpiExpenseSub">—</span>
           </div>
           <div class="card kpi">
-            <span class="kpi-label">Días registrados</span>
-            <span class="kpi-value" id="kpiDays">0</span>
+            <div class="kpi-top"><span class="kpi-label">Balance</span></div>
+            <span class="kpi-value" id="kpiNet">S/ 0.00</span>
+            <span class="kpi-sub" id="kpiNetSub">ingresos − gastos</span>
           </div>
           <div class="card kpi">
-            <span class="kpi-label">N° de cobros</span>
-            <span class="kpi-value" id="kpiCount">0</span>
-            <span class="kpi-sub" id="kpiExpense"></span>
+            <div class="kpi-top"><span class="kpi-label" id="kpiAvgLabel">Promedio diario</span></div>
+            <span class="kpi-value" id="kpiAvg">S/ 0.00</span>
+            <span class="kpi-sub" id="kpiAvgSub">—</span>
           </div>
         </div>
 
         <div class="card chart-card">
           <div class="chart-head">
-            <h2 class="section-title">📈 Ingresos por día</h2>
-            <div class="chart-toggle">
-              <button class="seg active" data-metric="income">Ingresos</button>
-              <button class="seg" data-metric="net">Neto</button>
+            <h2 class="section-title" id="chartTitle">Ingresos por día</h2>
+            <div class="chart-controls">
+              <div class="seg-group" id="periodToggle" role="tablist" aria-label="Periodo">
+                <button class="seg active" data-period="day">Día</button>
+                <button class="seg" data-period="week">Semana</button>
+                <button class="seg" data-period="month">Mes</button>
+              </div>
+              <div class="seg-group" id="metricToggle" role="tablist" aria-label="Métrica">
+                <button class="seg active" data-metric="income">Ingresos</button>
+                <button class="seg" data-metric="expense">Gastos</button>
+                <button class="seg" data-metric="net">Neto</button>
+              </div>
             </div>
           </div>
           <div class="chart-wrap"><canvas id="incomeChart"></canvas></div>
@@ -98,7 +108,7 @@
 
         <div class="card list-card">
           <div class="list-head">
-            <h2 class="section-title">🗓️ Detalle por día</h2>
+            <h2 class="section-title" id="listTitle">Detalle por día</h2>
             <div class="list-tools">
               <input type="search" id="searchInput" placeholder="🔎 Buscar nombre…" />
               <button id="btnExportCsv" class="btn btn-ghost btn-sm">⬇ CSV</button>

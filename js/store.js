@@ -197,6 +197,50 @@
       return out;
     },
 
+    /* Agrupado por periodo: 'day' | 'week' | 'month'. Más reciente primero.
+       Cada bucket: { key, label, short, start, income, expense, net, count,
+                      incomeCount, expenseCount, txns }. */
+    byPeriod: function (gran) {
+      gran = (gran === 'week' || gran === 'month') ? gran : 'day';
+      var MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+      function p2(n) { return String(n).padStart(2, '0'); }
+      function bucket(iso) {
+        var y = +iso.slice(0, 4), m = +iso.slice(5, 7), d = +iso.slice(8, 10);
+        if (gran === 'month') {
+          return { key: iso.slice(0, 7), start: iso.slice(0, 7) + '-01', short: MES[m - 1], label: MES[m - 1] + ' ' + y };
+        }
+        if (gran === 'week') {
+          var dt = new Date(y, m - 1, d);
+          var dow = (dt.getDay() + 6) % 7;        // 0 = lunes
+          dt.setDate(dt.getDate() - dow);         // lunes de esa semana
+          var end = new Date(dt); end.setDate(end.getDate() + 6);
+          var start = dt.getFullYear() + '-' + p2(dt.getMonth() + 1) + '-' + p2(dt.getDate());
+          return {
+            key: start, start: start, short: p2(dt.getDate()) + '/' + p2(dt.getMonth() + 1),
+            label: p2(dt.getDate()) + '/' + p2(dt.getMonth() + 1) + '–' + p2(end.getDate()) + '/' + p2(end.getMonth() + 1)
+          };
+        }
+        return { key: iso, start: iso, short: p2(d) + '/' + p2(m), label: p2(d) + '/' + p2(m) + '/' + y };
+      }
+      var map = {};
+      load().forEach(function (t) {
+        if (!t.date) return;
+        var b = bucket(t.date);
+        var g = map[b.key] || (map[b.key] = { key: b.key, label: b.label, short: b.short, start: b.start, income: 0, expense: 0, net: 0, count: 0, incomeCount: 0, expenseCount: 0, txns: [] });
+        g.txns.push(t); g.count++;
+        if (t.type === 'expense') { g.expense += t.amount; g.expenseCount++; } else { g.income += t.amount; g.incomeCount++; }
+      });
+      var out = Object.keys(map).map(function (k) {
+        var g = map[k];
+        g.income = Math.round(g.income * 100) / 100;
+        g.expense = Math.round(g.expense * 100) / 100;
+        g.net = Math.round((g.income - g.expense) * 100) / 100;
+        return g;
+      });
+      out.sort(function (a, b) { return (b.start || '').localeCompare(a.start || ''); });
+      return out;
+    },
+
     totals: function () {
       var inc = 0, exp = 0, count = 0, days = {};
       load().forEach(function (t) {

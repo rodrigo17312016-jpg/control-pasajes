@@ -15,6 +15,7 @@
     expanded: {},       // qué días están abiertos
     search: '',
     metric: 'income',
+    period: 'day',
     chart: null,
     autoT: null,        // timer de auto-análisis al pegar
     pasteCount: 0,      // contador para nombrar imágenes pegadas
@@ -290,50 +291,82 @@
 
   /* ----------------------- dashboard ----------------------- */
   function render() {
-    var days = Store.byDay();
-    var totals = Store.totals();
     var hasData = Store.hasData();
-
     $('emptyState').hidden = hasData;
     $('daysList').hidden = !hasData;
-
-    // KPIs
-    $('kpiIncome').textContent = money(totals.income);
-    $('kpiDays').textContent = totals.days;
-    $('kpiCount').textContent = totals.count;
-    $('kpiExpense').textContent = totals.expense > 0 ? 'Gastos: ' + money(totals.expense) : '';
-
-    var best = days.slice().sort(function (a, b) { return b.income - a.income; })[0];
-    $('kpiBestDay').textContent = best ? prettyDate(best.date).split(' ')[1] : '—';
-    $('kpiBestDayVal').textContent = best ? money(best.income) : '';
-
-    renderChart(days);
-    renderDays(days);
+    renderKPIs();
+    renderChart();
+    renderDays(Store.byDay());
   }
 
-  function renderChart(days) {
+  function renderKPIs() {
+    var t = Store.totals();
+    var incCount = 0, expCount = 0;
+    Store.all().forEach(function (x) { if (x.type === 'expense') expCount++; else incCount++; });
+
+    $('kpiIncome').textContent = money(t.income);
+    $('kpiIncomeSub').textContent = incCount + (incCount === 1 ? ' cobro' : ' cobros');
+    $('kpiExpense').textContent = money(t.expense);
+    $('kpiExpenseSub').textContent = expCount + (expCount === 1 ? ' movimiento' : ' movimientos');
+
+    var net = t.net;
+    var nEl = $('kpiNet');
+    nEl.textContent = (net < 0 ? '− ' : '') + money(Math.abs(net));
+    nEl.classList.toggle('val-expense', net < 0);
+    nEl.classList.toggle('val-income', net >= 0);
+    $('kpiNetSub').textContent = net >= 0 ? 'a favor' : 'en contra';
+
+    // Promedio adaptado al periodo seleccionado.
+    var buckets = Store.byPeriod(state.period);
+    var word = state.period === 'week' ? 'semanal' : (state.period === 'month' ? 'mensual' : 'diario');
+    var unit = state.period === 'week' ? 'semanas' : (state.period === 'month' ? 'meses' : 'días');
+    var n = buckets.length || 1;
+    $('kpiAvgLabel').textContent = 'Promedio ' + word;
+    $('kpiAvg').textContent = money(t.income / n);
+    var best = buckets.slice().sort(function (a, b) { return b.income - a.income; })[0];
+    $('kpiAvgSub').textContent = buckets.length + ' ' + unit + (best ? ' · máx ' + money(best.income) : '');
+  }
+
+  function renderChart() {
     if (!window.Chart) return;
-    var asc = days.slice().filter(function (d) { return d.date !== 'sin-fecha'; })
-      .sort(function (a, b) { return a.date.localeCompare(b.date); }).slice(-30);
-    var labels = asc.map(function (d) { var p = isoParts(d.date); return String(p.d).padStart(2, '0') + '/' + String(p.m).padStart(2, '0'); });
-    var data = asc.map(function (d) { return state.metric === 'net' ? d.net : d.income; });
+    var period = state.period || 'day', metric = state.metric || 'income';
+    var maxBars = period === 'day' ? 30 : (period === 'week' ? 16 : 12);
+    var buckets = Store.byPeriod(period).slice(0, maxBars).reverse();   // ascendente
+    var labels = buckets.map(function (b) { return b.short; });
+    var data = buckets.map(function (b) { return metric === 'expense' ? b.expense : (metric === 'net' ? b.net : b.income); });
+
+    // Título dinámico.
+    var mWord = metric === 'expense' ? 'Gastos' : (metric === 'net' ? 'Balance' : 'Ingresos');
+    var pWord = period === 'week' ? 'semana' : (period === 'month' ? 'mes' : 'día');
+    $('chartTitle').textContent = mWord + ' por ' + pWord;
+
+    // Color por métrica (Neto: verde/rojo según signo).
+    function colorFor(v) {
+      if (metric === 'net') return v < 0 ? 'rgba(233,84,89,0.92)' : 'rgba(45,200,150,0.92)';
+      if (metric === 'expense') return 'rgba(233,84,89,0.9)';
+      return 'rgba(124,92,255,0.92)';
+    }
+    var bg = data.map(colorFor);
+
     var ctx = $('incomeChart').getContext('2d');
     if (state.chart) state.chart.destroy();
-    var grad = ctx.createLinearGradient(0, 0, 0, 240);
-    grad.addColorStop(0, 'rgba(124,58,237,0.95)');
-    grad.addColorStop(1, 'rgba(124,58,237,0.45)');
     state.chart = new Chart(ctx, {
       type: 'bar',
-      data: { labels: labels, datasets: [{ label: state.metric === 'net' ? 'Neto' : 'Ingresos', data: data, backgroundColor: grad, borderRadius: 8, maxBarThickness: 46 }] },
+      data: { labels: labels, datasets: [{ data: data, backgroundColor: bg, borderRadius: 6, maxBarThickness: 40, borderSkipped: false }] },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: function (c) { return money(c.parsed.y); } } }
+          tooltip: {
+            callbacks: {
+              title: function (items) { var b = buckets[items[0].dataIndex]; return b ? b.label : ''; },
+              label: function (c) { return money(c.parsed.y); }
+            }
+          }
         },
         scales: {
-          x: { grid: { display: false }, ticks: { color: '#7c7c8a', font: { size: 11 } } },
-          y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#7c7c8a', callback: function (v) { return 'S/' + v; } } }
+          x: { grid: { display: false }, ticks: { color: '#8a8a99', font: { size: 11 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 14 } },
+          y: { beginAtZero: true, grid: { color: 'rgba(140,140,160,0.14)' }, ticks: { color: '#8a8a99', callback: function (v) { return 'S/' + v; } } }
         }
       }
     });
@@ -595,13 +628,24 @@
     var cs = $('cloudStatus');
     if (cs) cs.onclick = function () { syncFromCloud(); };
 
-    // toggle métrica del gráfico
-    document.querySelectorAll('.chart-toggle .seg').forEach(function (b) {
+    // selector de periodo del gráfico (Día / Semana / Mes)
+    document.querySelectorAll('#periodToggle .seg').forEach(function (b) {
       b.onclick = function () {
-        document.querySelectorAll('.chart-toggle .seg').forEach(function (x) { x.classList.remove('active'); });
+        document.querySelectorAll('#periodToggle .seg').forEach(function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        state.period = b.getAttribute('data-period');
+        renderKPIs();
+        renderChart();
+      };
+    });
+
+    // selector de métrica del gráfico (Ingresos / Gastos / Neto)
+    document.querySelectorAll('#metricToggle .seg').forEach(function (b) {
+      b.onclick = function () {
+        document.querySelectorAll('#metricToggle .seg').forEach(function (x) { x.classList.remove('active'); });
         b.classList.add('active');
         state.metric = b.getAttribute('data-metric');
-        renderChart(Store.byDay());
+        renderChart();
       };
     });
 
