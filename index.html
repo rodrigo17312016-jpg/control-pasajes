@@ -31,19 +31,21 @@
 
       <!-- ===== Subir capturas ===== -->
       <section class="card upload-card">
-        <h2 class="section-title">📥 Subir capturas</h2>
-        <p class="hint">Sube 1, 2 o 3 fotos de tus movimientos. La app lee cada uno, suma los <b>negros (ingresos)</b> e ignora los <b>rojos (gastos)</b>. Si una fila se repite entre fotos, <b>no la cuenta dos veces</b>.</p>
+        <h2 class="section-title">📥 Registrar movimientos</h2>
+        <p class="hint">Lo más confiable: sube el <b>reporte Excel de Yape</b> (Movimientos → Exportar). También puedes subir <b>fotos</b> de tus movimientos. Suma <b>ingresos</b> e ignora <b>gastos</b>, y <b>nunca cuenta duplicados</b>.</p>
+
+        <button id="btnExcel" type="button" class="btn btn-primary btn-block">📄 Subir reporte Excel de Yape</button>
 
         <div class="ref-date-row">
-          <label for="refDate">📅 Las capturas que dicen <b>“Hoy”</b> son del día:</label>
+          <label for="refDate">📅 Para fotos: las que dicen <b>“Hoy”</b> son del día:</label>
           <input type="date" id="refDate" />
         </div>
 
-        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Seleccionar imágenes">
-          <input type="file" id="fileInput" accept="image/*" multiple hidden />
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Seleccionar archivos">
+          <input type="file" id="fileInput" accept="image/*,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple hidden />
           <div class="dropzone-inner">
             <span class="dz-icon">🖼️</span>
-            <span class="dz-text">Toca para elegir fotos<br /><small>o arrástralas / pega con Ctrl + V</small></span>
+            <span class="dz-text">Toca para elegir fotos o Excel<br /><small>o arrástralos / pega imagen con Ctrl + V</small></span>
           </div>
         </div>
 
@@ -143,6 +145,38 @@
     </div>
   </div>
 
+  <!-- ===== Modal editar movimiento ===== -->
+  <div id="editModal" class="modal" hidden>
+    <div class="modal-content modal-sm">
+      <div class="modal-head">
+        <h2>Editar movimiento</h2>
+        <button id="btnCloseEdit" class="icon-btn" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="edit-form">
+        <label>Nombre <input id="editName" type="text" /></label>
+        <div class="edit-row">
+          <label>Fecha <input id="editDate" type="date" /></label>
+          <label>Hora <input id="editTime" type="time" /></label>
+        </div>
+        <div class="edit-row">
+          <label>Monto (S/) <input id="editAmount" type="number" step="0.5" min="0" /></label>
+          <label>Tipo
+            <select id="editType">
+              <option value="income">Ingreso</option>
+              <option value="expense">Gasto</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="btnDeleteEdit" class="btn btn-danger-ghost">🗑 Eliminar</button>
+        <span class="foot-spacer"></span>
+        <button id="btnCancelEdit" class="btn btn-ghost">Cancelar</button>
+        <button id="btnSaveEdit" class="btn btn-primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== Modal info ===== -->
   <div id="infoModal" class="modal" hidden>
     <div class="modal-content modal-sm">
@@ -166,6 +200,7 @@
   <script src="js/store.js"></script>
   <script src="js/cloud.js"></script>
   <script src="js/ocr.js"></script>
+  <script src="js/excel.js"></script>
   <script src="js/ui.js"></script>
   <script>
     if ('serviceWorker' in navigator) {

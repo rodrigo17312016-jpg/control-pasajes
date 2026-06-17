@@ -768,6 +768,32 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 }
 .txn-del:hover { background: var(--expense-soft); color: var(--expense); }
 .txn-del:active { transform: scale(.9); }
+.txn-edit {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--card-2);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.txn-edit:hover { background: var(--brand-soft, rgba(124,58,237,.1)); color: var(--brand, #7c3aed); }
+.txn-edit:active { transform: scale(.9); }
+
+/* formulario de edición */
+.edit-form { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; }
+.edit-form label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.edit-form input, .edit-form select {
+  font-size: 16px; padding: 11px 12px; border: 1px solid var(--line, rgba(0,0,0,.12));
+  border-radius: 12px; background: var(--card, #fff); color: var(--ink); width: 100%;
+}
+.edit-row { display: flex; gap: 10px; }
+.edit-row label { flex: 1; min-width: 0; }
+.foot-spacer { flex: 1; }
 
 .no-results {
   padding: 26px 10px;

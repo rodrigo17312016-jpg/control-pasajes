@@ -98,6 +98,19 @@
         .catch(function (e) { Cloud.online = false; console.warn('Cloud.pull', e); return []; });
     },
 
+    // Actualiza un movimiento editado (PATCH por id; recalcula dedup_key).
+    update: function (t) {
+      if (!this.enabled || !t || !t.id) return Promise.resolve({ ok: true });
+      var h = baseHeaders(); h['Prefer'] = 'return=minimal';
+      return fetch(REST + '?id=eq.' + encodeURIComponent(t.id), {
+        method: 'PATCH', headers: h, body: JSON.stringify(toRow(t))
+      }).then(function (res) {
+        Cloud.online = res.ok;
+        if (!res.ok) console.warn('Cloud.update status', res.status);
+        return { ok: res.ok, status: res.status };
+      }).catch(function (e) { Cloud.online = false; console.warn('Cloud.update', e); return { ok: false }; });
+    },
+
     // Borra un movimiento por id.
     remove: function (id) {
       if (!this.enabled || !id) return Promise.resolve({ ok: true });

@@ -18,7 +18,8 @@
     chart: null,
     autoT: null,        // timer de auto-análisis al pegar
     pasteCount: 0,      // contador para nombrar imágenes pegadas
-    busy: false         // hay un análisis en curso
+    busy: false,        // hay un análisis en curso
+    editId: null        // id del movimiento que se está editando
   };
 
   /* ----------------------- helpers ----------------------- */
@@ -67,6 +68,9 @@
 
   /* ----------------------- selección de archivos ----------------------- */
   function fileSig(f) { return (f.name || 'img') + '|' + (f.size || 0) + '|' + (f.lastModified || 0); }
+  function isExcel(f) { return /\.(xlsx|xls)$/i.test(f.name || '') || /spreadsheet|ms-excel/i.test(f.type || ''); }
+  function isImage(f) { return /^image\//.test(f.type || ''); }
+  function isAccepted(f) { return f && (isImage(f) || isExcel(f)); }
 
   // Agrega imágenes a la cola (sin reemplazar). Devuelve cuántas se agregaron.
   // opts.auto => dispara el análisis automático (usado al pegar).
@@ -77,7 +81,7 @@
     var added = 0;
     for (var i = 0; i < fileList.length; i++) {
       var f = fileList[i];
-      if (!f || !/^image\//.test(f.type || '')) continue;
+      if (!isAccepted(f)) continue;
       var sig = fileSig(f);
       if (have[sig]) continue;
       have[sig] = true;
@@ -155,7 +159,7 @@
     if (!state.files.length) { box.hidden = true; return; }
     box.hidden = false;
     state.files.forEach(function (f, i) {
-      var chip = el('span', 'chip', '🖼️ ' + esc(f.name.length > 22 ? f.name.slice(0, 20) + '…' : f.name));
+      var chip = el('span', 'chip', (isExcel(f) ? '📄 ' : '🖼️ ') + esc(f.name.length > 22 ? f.name.slice(0, 20) + '…' : f.name));
       var x = el('button', 'chip-x', '✕');
       x.onclick = function () { state.files.splice(i, 1); renderChips(); $('btnAnalyze').disabled = state.files.length === 0; };
       chip.appendChild(x);
@@ -166,10 +170,6 @@
   /* ----------------------- análisis OCR ----------------------- */
   function analyze() {
     if (state.busy) return;
-    if (!window.OCR || typeof OCR.extract !== 'function') {
-      toast('El motor de lectura no cargó. Recarga la página.', true);
-      return;
-    }
     if (!state.files.length) return;
     state.busy = true;
     var refDate = $('refDate').value || todayISO();
@@ -189,21 +189,26 @@
     function next() {
       if (idx >= files.length) { done(); return; }
       var f = files[idx];
-      setProg((idx) / files.length, 'Leyendo ' + (idx + 1) + ' de ' + files.length + '…');
-      OCR.extract(f, {
+      var useExcel = isExcel(f);
+      var engine = useExcel ? (window.ExcelImport && ExcelImport.extract) : (window.OCR && OCR.extract);
+      var verb = useExcel ? 'Importando Excel' : 'Leyendo imagen';
+      setProg(idx / files.length, verb + ' ' + (idx + 1) + ' de ' + files.length + '…');
+      if (typeof engine !== 'function') {
+        console.warn('Motor no disponible para', f.name);
+        idx++; next(); return;
+      }
+      engine(f, {
         refDate: refDate,
         source: f.name,
         onProgress: function (p, m) {
-          setProg((idx + (p || 0)) / files.length, (m || 'Leyendo') + ' (' + (idx + 1) + '/' + files.length + ')');
+          setProg((idx + (p || 0)) / files.length, (m || verb) + ' (' + (idx + 1) + '/' + files.length + ')');
         }
       }).then(function (rows) {
         all = all.concat(rows || []);
-        idx++;
-        next();
+        idx++; next();
       }).catch(function (e) {
-        console.error('OCR error', e);
-        idx++;
-        next();
+        console.error('extract error', e);
+        idx++; next();
       });
     }
 
@@ -213,7 +218,7 @@
       setTimeout(function () { prog.hidden = true; bar.style.width = '0%'; }, 400);
       $('btnAnalyze').disabled = false;
       if (!all.length) {
-        toast('No pude leer movimientos. Prueba con una captura más nítida.', true);
+        toast('No encontré movimientos. Revisa el Excel de Yape o usa una captura más nítida.', true);
         return;
       }
       openReview(all);
@@ -367,14 +372,13 @@
           '<span class="txn-name">' + esc(t.name) + '</span>' +
           '<span class="txn-right">' +
             '<span class="txn-amount ' + t.type + '">' + (t.type === 'expense' ? '−' : '') + money(t.amount) + '</span>' +
-            '<button class="txn-del" title="Eliminar" data-id="' + t.id + '">🗑</button>' +
+            '<button class="txn-edit" title="Editar">✎</button>' +
+            '<button class="txn-del" title="Eliminar">🗑</button>' +
           '</span>';
+        row.querySelector('.txn-edit').onclick = function (ev) { ev.stopPropagation(); openEdit(t); };
         row.querySelector('.txn-del').onclick = function (ev) {
           ev.stopPropagation();
-          Store.remove(t.id);
-          if (window.Cloud && Cloud.enabled) { Cloud.remove(t.id).then(setCloudStatus); }
-          toast('Movimiento eliminado');
-          render();
+          deleteTxn(t.id);
         };
         body.appendChild(row);
       });
@@ -419,6 +423,46 @@
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () { toast('Resumen copiado'); }, function () { toast(text); });
     } else { toast('Copiado'); }
+  }
+
+  /* ----------------------- editar / eliminar en el historial ----------------------- */
+  function deleteTxn(id) {
+    Store.remove(id);
+    if (window.Cloud && Cloud.enabled) { Cloud.remove(id).then(setCloudStatus); }
+    toast('Movimiento eliminado');
+    render();
+  }
+
+  function openEdit(t) {
+    state.editId = t.id;
+    $('editName').value = t.name || '';
+    $('editDate').value = t.date || '';
+    $('editTime').value = t.time || '';
+    $('editAmount').value = t.amount;
+    $('editType').value = t.type === 'expense' ? 'expense' : 'income';
+    showModal('editModal');
+  }
+
+  function saveEdit() {
+    var id = state.editId; if (!id) return;
+    Store.update(id, {
+      name: $('editName').value.trim() || '(sin nombre)',
+      date: $('editDate').value,
+      time: $('editTime').value,
+      amount: $('editAmount').value,
+      type: $('editType').value
+    });
+    var updated = Store.all().filter(function (x) { return x.id === id; })[0];
+    if (updated && window.Cloud && Cloud.enabled) {
+      Cloud.update(updated).then(function (r) {
+        if (!r.ok) toast('Guardado local; la nube rechazó (¿quedó igual a otro?)', true);
+        setCloudStatus();
+      });
+    }
+    hideModal('editModal');
+    state.editId = null;
+    toast('Movimiento actualizado');
+    render();
   }
 
   /* ----------------------- sincronización con la nube ----------------------- */
@@ -507,10 +551,24 @@
 
     $('btnAnalyze').onclick = analyze;
 
+    // botón Excel dedicado: abre el mismo selector de archivos
+    var be = $('btnExcel');
+    if (be) be.onclick = function () { fi.click(); };
+
     // revisión
     $('btnSaveReview').onclick = saveReview;
     $('btnCancelReview').onclick = function () { hideModal('reviewModal'); };
     $('btnCancelReview2').onclick = function () { hideModal('reviewModal'); };
+
+    // editar movimiento
+    $('btnSaveEdit').onclick = saveEdit;
+    $('btnCancelEdit').onclick = function () { hideModal('editModal'); state.editId = null; };
+    $('btnCloseEdit').onclick = function () { hideModal('editModal'); state.editId = null; };
+    $('btnDeleteEdit').onclick = function () {
+      var id = state.editId; if (!id) return;
+      hideModal('editModal'); state.editId = null;
+      deleteTxn(id);
+    };
 
     // info
     $('btnInfo').onclick = function () { showModal('infoModal'); };
