@@ -13,7 +13,7 @@
 
 'use strict';
 
-const CACHE = 'control-pasajes-v6';
+const CACHE = 'control-pasajes-v8';
 
 // Recursos mínimos que forman el "esqueleto" de la app (mismo origen).
 const APP_SHELL = [

@@ -115,31 +115,35 @@
        Devuelve copias limpias con campo _dup. NO guarda nada. */
     classifyBatch: function (list) {
       var existing = {};
-      load().forEach(function (t) { existing[keyOf(t)] = true; });
+      var dates = {};
+      // 'sin-fecha' se trata como un día más (igual que byDay) para que la
+      // protección sea consistente.
+      load().forEach(function (t) { existing[keyOf(t)] = true; dates[t.date || 'sin-fecha'] = true; });
       var seen = {};
       return (list || []).map(function (p) {
         var t = clean(p);
         var k = keyOf(t);
-        var dup = !!existing[k] || !!seen[k];
+        t._dup = !!existing[k] || !!seen[k];                  // duplicado exacto
+        t._existingDay = !!dates[t.date || 'sin-fecha'];      // su día ya tiene movimientos
         seen[k] = true;
-        t._dup = dup;
         return t;
       });
     },
 
-    /* Agrega muchas, deduplicando contra lo existente y dentro del lote.
-       Devuelve {addedCount, dupCount, added:[]}. */
+    /* Agrega muchas, deduplicando contra lo existente (por clave exacta Y por id)
+       y dentro del lote. La guarda por id evita filas con id duplicado al fusionar
+       lo que baja de la nube. Devuelve {addedCount, dupCount, added:[]}. */
     addMany: function (list) {
       var arr = load();
-      var have = {};
-      arr.forEach(function (t) { have[keyOf(t)] = true; });
+      var have = {}, haveId = {};
+      arr.forEach(function (t) { have[keyOf(t)] = true; haveId[t.id] = true; });
       var added = [], dup = 0;
       (list || []).forEach(function (p) {
         var t = clean(p);
-        delete t._dup;
+        delete t._dup; delete t._existingDay;
         var k = keyOf(t);
-        if (have[k]) { dup++; return; }
-        have[k] = true;
+        if (have[k] || haveId[t.id]) { dup++; return; }
+        have[k] = true; haveId[t.id] = true;
         arr.push(t);
         added.push(t);
       });

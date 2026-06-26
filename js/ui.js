@@ -231,19 +231,74 @@
   /* ----------------------- modal de revisión ----------------------- */
   function openReview(partials) {
     state.reviewRows = Store.classifyBatch(partials);
-    var newCount = state.reviewRows.filter(function (r) { return !r._dup; }).length;
-    var dupCount = state.reviewRows.length - newCount;
-    $('reviewSummary').innerHTML = 'Leí <b>' + state.reviewRows.length + '</b> movimientos · <b>' +
-      newCount + '</b> nuevos' + (dupCount ? ' · <b>' + dupCount + '</b> duplicados (ya registrados)' : '') + '.';
+    refreshOption(true);     // evalúa visibilidad + default del toggle
+    buildReviewTable();
+    showModal('reviewModal');
+  }
+
+  // ¿la opción "solo días faltantes" está activa y visible?
+  function soloFaltantesOn() {
+    var opt = $('optSoloFaltantes'), chk = $('chkSoloFaltantes');
+    return opt && !opt.hidden && chk && chk.checked;
+  }
+
+  // Muestra la opción solo si el lote toca días ya registrados.
+  // initial=true (apertura) o cuando la opción pasa de oculta a visible => fija el default ON.
+  function refreshOption(initial) {
+    var existingDayRows = state.reviewRows.filter(function (r) { return r._existingDay && !r._dup; }).length;
+    var opt = $('optSoloFaltantes'), chk = $('chkSoloFaltantes');
+    var wasHidden = opt.hidden;
+    opt.hidden = existingDayRows === 0;
+    if (initial || (wasHidden && !opt.hidden)) chk.checked = existingDayRows > 0;
+  }
+
+  // Lee lo editado en la tabla de vuelta al estado.
+  function captureReviewEdits() {
+    state.reviewRows.forEach(function (r, i) {
+      var n = document.querySelector('#reviewTableBody .r-name[data-i="' + i + '"]');
+      if (!n) return;
+      var q = function (sel) { return document.querySelector('#reviewTableBody .' + sel + '[data-i="' + i + '"]'); };
+      r.name = n.value; r.date = q('r-date').value; r.time = q('r-time').value; r.amount = q('r-amount').value; r.type = q('r-type').value;
+    });
+  }
+
+  // Tras editar una fecha/dato: recapturar + RECLASIFICAR (flags frescos contra el
+  // registro actual) + re-evaluar la opción + re-render. Así proteger/agregar siempre
+  // refleja la FECHA ACTUAL de cada fila, no la que leyó el OCR/Excel.
+  function refreshReview() {
+    captureReviewEdits();
+    state.reviewRows = Store.classifyBatch(state.reviewRows);
+    refreshOption(false);
+    buildReviewTable();
+  }
+
+  function buildReviewTable() {
+    var rows = state.reviewRows;
+    var solo = soloFaltantesOn();
+    var nuevos = 0, dups = 0, diaReg = 0, enDiasReg = 0, diasNuevos = {};
+    rows.forEach(function (r) {
+      if (r._dup) { dups++; return; }
+      if (r._existingDay) { enDiasReg++; if (solo) { diaReg++; return; } }
+      nuevos++;
+      if (r.date && !r._existingDay) diasNuevos[r.date] = true;
+    });
+    var nDias = Object.keys(diasNuevos).length;
+    $('reviewSummary').innerHTML = 'Leí <b>' + rows.length + '</b> movimientos · <b>' + nuevos + '</b> a guardar' +
+      (nDias ? ' (' + nDias + ' día' + (nDias === 1 ? '' : 's') + ' nuevo' + (nDias === 1 ? '' : 's') + ')' : '') +
+      (diaReg ? ' · <b>' + diaReg + '</b> en días ya registrados (no se tocan)' : '') +
+      (!solo && enDiasReg ? ' · ⚠️ <b>' + enDiasReg + '</b> caerán en días que ya tenías' : '') +
+      (dups ? ' · <b>' + dups + '</b> duplicados' : '') + '.';
 
     var tb = $('reviewTableBody');
     tb.innerHTML = '';
-    state.reviewRows.forEach(function (r, i) {
-      var tr = el('tr', r._dup ? 'dup-row' : '');
+    rows.forEach(function (r, i) {
+      var prot = r._dup || (solo && r._existingDay);
+      var badge = r._dup ? ' <span class="badge-dup">duplicado</span>'
+        : ((solo && r._existingDay) ? ' <span class="badge-day">día ya registrado</span>' : '');
+      var tr = el('tr', prot ? 'dup-row' : '');
       tr.innerHTML =
-        '<td><input type="checkbox" class="r-check" data-i="' + i + '" ' + (r._dup ? '' : 'checked') + '></td>' +
-        '<td><input class="r-name" data-i="' + i + '" value="' + esc(r.name) + '">' +
-          (r._dup ? ' <span class="badge-dup">duplicado</span>' : '') + '</td>' +
+        '<td><input type="checkbox" class="r-check" data-i="' + i + '" ' + (prot ? '' : 'checked') + '></td>' +
+        '<td><input class="r-name" data-i="' + i + '" value="' + esc(r.name) + '">' + badge + '</td>' +
         '<td><input type="date" class="r-date" data-i="' + i + '" value="' + esc(r.date) + '"></td>' +
         '<td><input type="time" class="r-time" data-i="' + i + '" value="' + esc(r.time) + '"></td>' +
         '<td><input type="number" step="0.5" min="0" class="r-amount" data-i="' + i + '" value="' + r.amount + '"></td>' +
@@ -253,34 +308,34 @@
         '</select></td>';
       tb.appendChild(tr);
     });
-    showModal('reviewModal');
   }
 
   function saveReview() {
-    var rows = state.reviewRows;
-    var picked = [];
-    var checks = document.querySelectorAll('#reviewTableBody .r-check');
-    checks.forEach(function (chk) {
-      if (!chk.checked) return;
+    captureReviewEdits();
+    state.reviewRows = Store.classifyBatch(state.reviewRows);  // flags frescos por si editaron sin disparar change
+    refreshOption(false);
+    var rows = state.reviewRows, solo = soloFaltantesOn();
+    var picked = [], protCount = 0;
+    document.querySelectorAll('#reviewTableBody .r-check').forEach(function (chk) {
       var i = +chk.getAttribute('data-i');
-      var q = function (sel) { return document.querySelector('#reviewTableBody .' + sel + '[data-i="' + i + '"]'); };
-      picked.push({
-        name: q('r-name').value,
-        date: q('r-date').value,
-        time: q('r-time').value,
-        amount: q('r-amount').value,
-        type: q('r-type').value,
-        source: rows[i].source,
-        note: rows[i].note
-      });
+      var r = rows[i]; if (!r) return;
+      if (chk.checked) {
+        picked.push({ name: r.name, date: r.date, time: r.time, amount: r.amount, type: r.type, source: r.source, note: r.note });
+      } else if (solo && r._existingDay && !r._dup) {
+        protCount++;   // protegida y NO re-marcada por el usuario
+      }
     });
-    if (!picked.length) { toast('No marcaste ninguna fila.', true); return; }
+    if (!picked.length) {
+      toast(protCount ? 'Nada que agregar: esos días ya estaban registrados (no se tocaron).' : 'No marcaste ninguna fila.', true);
+      return;
+    }
     var res = Store.addMany(picked);
     pushToCloud(res.added);              // sube los nuevos al registro central
     hideModal('reviewModal');
     state.files = []; renderChips(); $('btnAnalyze').disabled = true; $('fileInput').value = '';
-    toast('✅ ' + res.addedCount + ' guardados' + (res.dupCount ? ' · ' + res.dupCount + ' duplicados omitidos' : ''));
-    // expandir el día más reciente recién agregado
+    toast('✅ ' + res.addedCount + ' guardados' +
+      (protCount ? ' · ' + protCount + ' no tocados (días ya registrados)' : '') +
+      (res.dupCount ? ' · ' + res.dupCount + ' duplicados' : ''));
     if (res.added.length) state.expanded[res.added[0].date] = true;
     render();
   }
@@ -478,6 +533,8 @@
 
   function saveEdit() {
     var id = state.editId; if (!id) return;
+    var prev = Store.all().filter(function (x) { return x.id === id; })[0];
+    var orig = prev ? JSON.parse(JSON.stringify(prev)) : null;   // para revertir si la nube rechaza
     Store.update(id, {
       name: $('editName').value.trim() || '(sin nombre)',
       date: $('editDate').value,
@@ -488,7 +545,16 @@
     var updated = Store.all().filter(function (x) { return x.id === id; })[0];
     if (updated && window.Cloud && Cloud.enabled) {
       Cloud.update(updated).then(function (r) {
-        if (!r.ok) toast('Guardado local; la nube rechazó (¿quedó igual a otro?)', true);
+        if (!r.ok) {
+          // 409 = la edición quedó IGUAL a otro movimiento existente (clave única).
+          // Revertimos lo local para no dejar local y nube divergentes.
+          if (r.status === 409 && orig) {
+            Store.update(id, orig); render();
+            toast('Esa edición queda igual a un movimiento que ya existe — no se aplicó.', true);
+          } else {
+            toast('Guardado local; no se pudo sincronizar (lo reintento luego)', true);
+          }
+        }
         setCloudStatus();
       });
     }
@@ -592,6 +658,13 @@
     $('btnSaveReview').onclick = saveReview;
     $('btnCancelReview').onclick = function () { hideModal('reviewModal'); };
     $('btnCancelReview2').onclick = function () { hideModal('reviewModal'); };
+    $('chkSoloFaltantes').onchange = refreshReview;
+    // Editar una fecha/dato en la tabla recalcula la protección con la fecha ACTUAL
+    // (no re-renderiza al marcar/desmarcar un checkbox manualmente).
+    $('reviewTableBody').addEventListener('change', function (e) {
+      var t = e.target;
+      if (t && t.className && /\br-(name|date|time|amount|type)\b/.test(t.className)) refreshReview();
+    });
 
     // editar movimiento
     $('btnSaveEdit').onclick = saveEdit;

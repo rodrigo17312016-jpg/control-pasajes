@@ -139,7 +139,11 @@
         <button id="btnCancelReview" class="icon-btn" aria-label="Cerrar">✕</button>
       </div>
       <p id="reviewSummary" class="review-summary"></p>
-      <p class="hint">Corrige lo que haga falta. Las filas marcadas como <span class="badge-dup">duplicado</span> ya existen y vienen <b>desmarcadas</b> para no sumarlas otra vez.</p>
+      <label class="review-opt" id="optSoloFaltantes" hidden>
+        <input type="checkbox" id="chkSoloFaltantes" />
+        <span>🔒 <b>Solo días que aún no tengo</b> — no tocar los días ya registrados (protege lo que editaste a mano).</span>
+      </label>
+      <p class="hint">Corrige lo que haga falta. Las filas <span class="badge-dup">duplicado</span> o <span class="badge-day">día ya registrado</span> vienen <b>desmarcadas</b> para no tocarlas.</p>
       <div class="review-table-wrap">
         <table class="review-table">
           <thead>

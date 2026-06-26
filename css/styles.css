@@ -1125,6 +1125,45 @@ select.r-type { min-width: 110px; }
   white-space: nowrap;
   vertical-align: middle;
 }
+.badge-day {
+  display: inline-block;
+  padding: 2px 9px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--brand-2, #9b87ff);
+  background: var(--brand-soft, rgba(124,92,255,.14));
+  border: 1px solid var(--brand-soft-border, rgba(124,92,255,.30));
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Opción "solo días faltantes" en el modal de revisión */
+.review-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 18px 4px;
+  padding: 11px 13px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--brand-soft, rgba(124,92,255,.10));
+  border: 1px solid var(--brand-soft-border, rgba(124,92,255,.30));
+  border-radius: var(--r-sm, 12px);
+  cursor: pointer;
+}
+.review-opt input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin-top: 1px;
+  accent-color: var(--brand, #7c5cff);
+  cursor: pointer;
+}
+.review-opt b { font-weight: 800; }
 
 /* Formulario de edición */
 .edit-form {
