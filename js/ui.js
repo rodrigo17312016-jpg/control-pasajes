@@ -8,6 +8,7 @@
 
   var MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   var DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  var DIAS_FULL = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
   var state = {
     files: [],          // File[] seleccionados
@@ -480,21 +481,59 @@
   }
 
   /* ----------------------- exportar / resumen ----------------------- */
-  function exportCsv() {
-    var rows = Store.all();
-    if (!rows.length) { toast('No hay datos para exportar.', true); return; }
-    rows.sort(function (a, b) { return (b.date + b.time).localeCompare(a.date + a.time); });
-    var head = ['fecha', 'hora', 'nombre', 'tipo', 'monto'];
-    var lines = [head.join(',')];
-    rows.forEach(function (t) {
-      lines.push([t.date, t.time, '"' + (t.name || '').replace(/"/g, '""') + '"', t.type === 'expense' ? 'gasto' : 'ingreso', t.amount.toFixed(2)].join(','));
-    });
-    var blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'pasajes_' + todayISO() + '.csv';
-    a.click();
-    toast('CSV descargado');
+  // Filas del reporte: una por día -> [Fecha DD/MM/YYYY, Día (semana), ingreso].
+  function reportRows() {
+    return Store.byDay()
+      .filter(function (d) { return d.date !== 'sin-fecha' && d.income > 0; })
+      .sort(function (a, b) { return a.date.localeCompare(b.date); })
+      .map(function (d) {
+        var p = isoParts(d.date);
+        var dt = new Date(p.y, p.m - 1, p.d);
+        var fecha = String(p.d).padStart(2, '0') + '/' + String(p.m).padStart(2, '0') + '/' + p.y;
+        return { fecha: fecha, dia: DIAS_FULL[dt.getDay()], ingreso: Math.round(d.income * 100) / 100 };
+      });
+  }
+
+  // Exporta una TABLA limpia por día: Fecha · Día · Ingresos. xlsx real (SheetJS);
+  // si la librería no carga (sin internet) cae a CSV con las mismas 3 columnas.
+  function exportXlsx() {
+    var data = reportRows();
+    if (!data.length) { toast('No hay ingresos para exportar.', true); return; }
+    var total = data.reduce(function (s, r) { return s + r.ingreso; }, 0);
+    total = Math.round(total * 100) / 100;
+
+    function csvFallback() {
+      var lines = ['Fecha,Día,Ingresos (S/)'];
+      data.forEach(function (r) { lines.push(r.fecha + ',' + r.dia + ',' + r.ingreso.toFixed(2)); });
+      lines.push('TOTAL,,' + total.toFixed(2));
+      var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'pasajes_ingresos_' + todayISO() + '.csv';
+      a.click();
+      toast('Tabla exportada (CSV)');
+    }
+
+    if (!window.ExcelImport || typeof ExcelImport.load !== 'function') { csvFallback(); return; }
+    ExcelImport.load().then(function (XLSX) {
+      var aoa = [['Fecha', 'Día', 'Ingresos (S/)']];
+      data.forEach(function (r) { aoa.push([r.fecha, r.dia, r.ingreso]); });
+      aoa.push(['TOTAL', '', total]);
+
+      var ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = [{ wch: 13 }, { wch: 12 }, { wch: 14 }];
+      ws['!autofilter'] = { ref: 'A1:C1' };
+      // formato de moneda en la columna de ingresos (C)
+      var range = XLSX.utils.decode_range(ws['!ref']);
+      for (var r = 1; r <= range.e.r; r++) {
+        var addr = XLSX.utils.encode_cell({ r: r, c: 2 });
+        if (ws[addr] && typeof ws[addr].v === 'number') ws[addr].z = '"S/" #,##0.00';
+      }
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Ingresos por día');
+      XLSX.writeFile(wb, 'pasajes_ingresos_' + todayISO() + '.xlsx');
+      toast('📄 Excel exportado');
+    }).catch(function (e) { console.warn('exportXlsx', e); csvFallback(); });
   }
 
   function copySummary() {
@@ -682,7 +721,7 @@
 
     // herramientas
     $('searchInput').oninput = function () { state.search = this.value; renderDays(Store.byDay()); };
-    $('btnExportCsv').onclick = exportCsv;
+    $('btnExportCsv').onclick = exportXlsx;
     $('btnCopySummary').onclick = copySummary;
     $('btnLoadSample').onclick = function () { Store.seedSample(); toast('Ejemplo cargado'); render(); };
     $('btnClearAll').onclick = function () {

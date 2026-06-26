@@ -142,5 +142,5 @@
     });
   }
 
-  window.ExcelImport = { extract: extract };
+  window.ExcelImport = { extract: extract, load: loadXLSX };
 })();
