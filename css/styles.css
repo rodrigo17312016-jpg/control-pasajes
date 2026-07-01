@@ -986,6 +986,21 @@ body.modal-open { overflow: hidden; }
 }
 .modal-content.modal-sm { max-width: 440px; }
 
+/* El modal de REVISIÓN aprovecha el espacio disponible: mucho más ancho y alto,
+   así la tabla entra completa (sin scroll horizontal ni columnas cortadas). */
+#reviewModal .modal-content {
+  max-width: min(1180px, 96vw);
+  width: 96vw;
+  max-height: 94vh;
+}
+#reviewModal .review-table { font-size: 14px; }
+#reviewModal .review-table th,
+#reviewModal .review-table td { padding-top: 9px; padding-bottom: 9px; }
+/* La columna Nombre (2ª) absorbe todo el ancho extra; el resto queda compacto. */
+#reviewModal .review-table th:nth-child(2),
+#reviewModal .review-table td:nth-child(2) { width: 100%; }
+#reviewModal .r-name { min-width: 200px; }
+
 .modal-head {
   flex: none;
   display: flex;
